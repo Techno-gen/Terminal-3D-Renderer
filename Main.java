@@ -4,8 +4,8 @@ import java.util.List;
 import java.util.Scanner;
 
 public class Main {
-    static final int W = 120;
-    static final int H = 50;
+    static final int W = 150;
+    static final int H = 70;
 
     // project 3d point into a 2d point
     static int[] project(double px, double py, double pz) {
@@ -101,9 +101,8 @@ public class Main {
                 continue;
             }
             String line = sc.nextLine();
-            if (line.startsWith("#")) {
-                continue;
-            }
+            if (line.startsWith("#")) continue;
+
             if (line.startsWith("v ")) {
                 String[] parts = line.trim().split("\\s+"); // trim first in case of leading spaces
                 verts.add(new double[]{
@@ -169,6 +168,7 @@ public class Main {
         double rotY = 0.5;
         double xmov = 0, ymov = 0, zmov = 0;
         char mode = 'w'; // w = wireframe, s = solid
+        boolean isTriangles = args.length > 0; // obj files use triangles, hardcoded cube uses quads
 
         double[][] verts;
         double[][] faces;
@@ -228,19 +228,24 @@ public class Main {
                 // For each face, get the outward facing normal and dot product it with any of the vertices of that face.
                 // If that dot product is 0 or greater, cull it from the screen.
                 double[] n = normal(a, b, c);
-                if (dot(n, camDir) >= 0) continue; // backface, skip dont draw
+                if (isTriangles ? dot(n, camDir) <= 0 : dot(n, camDir) >= 0) continue; // backface, skip dont draw
+
+                // draw correct number of edges (triangles have 3, quads have 4)
+                int faceVerts = isTriangles ? 3 : 4;
+                int[] fi = {i0, i1, i2, i3};
+                for (int i = 0; i < faceVerts; i++) {
+                    int[] pa = projected[fi[i]];
+                    int[] pb = projected[fi[(i+1) % faceVerts]];
+                    drawLine(buf, pa[0], pa[1], pb[0], pb[1], '*');
+                }
 
                 // fill this face
                 if (mode == 's') {
-                    fillFace(buf, projected[i0], projected[i1], projected[i2], projected[i3], '#');
-                }
-
-                // wireframe edges of this face
-                int[] fi = {i0, i1, i2, i3};
-                for (int i = 0; i < 4; i++) {
-                    int[] pa = projected[fi[i]];
-                    int[] pb = projected[fi[(i+1)%4]];
-                    drawLine(buf, pa[0], pa[1], pb[0], pb[1], '*');
+                    if (isTriangles) {
+                        fillFace(buf, projected[i0], projected[i1], projected[i2], projected[i2], '#');
+                    } else {
+                        fillFace(buf, projected[i0], projected[i1], projected[i2], projected[i3], '#');
+                    }
                 }
             }
 
