@@ -1,3 +1,5 @@
+// Yevgens object file renderer
+
 import java.io.File;
 import java.util.ArrayList;
 import java.util.List;
@@ -6,6 +8,11 @@ import java.util.Scanner;
 public class Main {
     static final int W = 150;
     static final int H = 70;
+    static final double[] LIGHT = {-0.5, -0.5, -1.0};
+    static final char[] SHADING = {'.', ':', '+', '*', '#', '@'};
+
+    // starting ref for most of the projection/rotation principles:
+    // https://stackoverflow.com/questions/724219/how-to-convert-a-3d-point-into-2d-perspective-projection
 
     // project 3d point into a 2d point
     static int[] project(double px, double py, double pz) {
@@ -87,7 +94,8 @@ public class Main {
     }
 
     // ref: https://en.wikipedia.org/wiki/Wavefront_.obj_file
-    // I gotta talk about this, the code was so awful and it took multiple days to debug since the .obj format is so weird.
+    // I gotta talk about this, the code was so awful and it took multiple days to debug since the .obj format is so weird and old.
+    // .obj files also use triangle faces instead of quads, oversight on my part when i initially wrote the loader
     // load verts and faces from a .obj file, also derive edges from faces since .obj doesn't natively support edges
     static double[][][] loadObj(String path) throws Exception {
         List<double[]> verts = new ArrayList<>();
@@ -175,6 +183,7 @@ public class Main {
 
         if (args.length > 0) {
             // load from obj file if its there
+            System.out.println("Loading model from " + args[0] + "...");
             double[][][] loaded = loadObj(args[0]);
             verts = loaded[0];
             faces = loaded[1];
@@ -227,9 +236,25 @@ public class Main {
                 // Iterate through all faces of model.
                 // For each face, get the outward facing normal and dot product it with any of the vertices of that face.
                 // If that dot product is 0 or greater, cull it from the screen.
+                // instead of fixed camDir {0,0,-1}, compute vector from camera to face center
+                // use absolute value threshold so both winding orders pass the same test
+                // camera is at origin, so view vector is just the center position
                 double[] n = normal(a, b, c);
-                if (isTriangles ? dot(n, camDir) <= 0 : dot(n, camDir) >= 0) continue; // backface, skip dont draw
+                double[] center = {
+                    (a[0] + b[0] + c[0]) / 3.0,
+                    (a[1] + b[1] + c[1]) / 3.0,
+                    (a[2] + b[2] + c[2]) / 3.0
+                };
+                
+                // lighting
+                double len = Math.sqrt(n[0]*n[0] + n[1]*n[1] + n[2]*n[2]);
+                double[] nNorm = {n[0]/len, n[1]/len, n[2]/len};
+                double brightness = dot(nNorm, LIGHT);
+                brightness = Math.max(0, Math.min(1, brightness)); // clamp to [0, 1]
+                char fillChar = SHADING[(int)(brightness * (SHADING.length - 1))];
 
+                // most .obj files render using triangles, making it important for the backface culler to make the distinction.
+                // it checks the number of vertices and adjusts the winding order based on that, providing accurate culling to each face.
                 // draw correct number of edges (triangles have 3, quads have 4)
                 int faceVerts = isTriangles ? 3 : 4;
                 int[] fi = {i0, i1, i2, i3};
@@ -238,13 +263,19 @@ public class Main {
                     int[] pb = projected[fi[(i+1) % faceVerts]];
                     drawLine(buf, pa[0], pa[1], pb[0], pb[1], '*');
                 }
+                double[] viewVec = {
+                        (a[0] + b[0] + c[0]) / 3.0,
+                        (a[1] + b[1] + c[1]) / 3.0,
+                        (a[2] + b[2] + c[2]) / 3.0
+                    };
+                if (dot(n, viewVec) <= 0) continue; // was >= 0, flipped
 
                 // fill this face
                 if (mode == 's') {
                     if (isTriangles) {
-                        fillFace(buf, projected[i0], projected[i1], projected[i2], projected[i2], '#');
+                        fillFace(buf, projected[i0], projected[i1], projected[i2], projected[i2], fillChar);
                     } else {
-                        fillFace(buf, projected[i0], projected[i1], projected[i2], projected[i3], '#');
+                        fillFace(buf, projected[i0], projected[i1], projected[i2], projected[i3], fillChar);
                     }
                 }
             }
